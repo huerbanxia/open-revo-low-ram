@@ -113,3 +113,29 @@ node cdp-eval.js 9222 "<expression>"
 
 测量口径提醒：任务管理器按应用分组会把多进程 working set 相加，其中 GPU 进程的
 working set 大量是共享/可回收页；判断常驻成本请用 private bytes / commit。
+
+---
+
+## 7. 发版必读：别用裸 `cargo build --release`
+
+Tauri 的前端内嵌依赖 `tauri/custom-protocol` 这个 feature，**只有官方 CLI 会自动带上它**。
+直接 `cargo build --release` 出来的二进制虽然也是 release 优化版，但前端仍是开发模式：
+运行时会去连 `tauri.conf.json` 的 `devUrl`（本项目 `http://localhost:1420`），没起前端服务
+就是一片 `ERR_CONNECTION_REFUSED`——而且二进制里能 `strings` 到 `localhost:1420`、
+找不到 `assets/index-*.js`。
+
+正确做法：
+
+```bash
+pnpm tauri build --no-bundle      # 等价于项目脚本 pnpm tauri:build
+```
+
+校验发布包是否合格（两条都要满足）：
+
+```bash
+strings -a open-revo.exe | grep -c "localhost:1420"                    # 期望仅 1（conf 里的 devUrl 字符串）
+strings -a open-revo.exe | grep -E "assets/index-[A-Za-z0-9_-]+\.js"    # 期望能命中内嵌资产名
+```
+
+需要"能打断点又不依赖本地服务"的调试包：`pnpm tauri build --debug --no-bundle`。
+
