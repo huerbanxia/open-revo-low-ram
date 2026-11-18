@@ -78,6 +78,31 @@ pub fn cancel_main() {
     MAIN_EPOCH.fetch_add(1, Ordering::SeqCst);
 }
 
+/// 启动态的卸载计划：必须等前端握手完成后再计时。
+///
+/// 原因：主窗口是 `visible:false` 创建的，前端挂载完成会调 `frontend_ready`，而
+/// `WebviewOrchestrator::notify_main_ready()` 靠这个握手解锁 OSD / 桌面挂件的创建队列。
+/// 若隐藏阈值只有 1 秒，WebView 会在前端挂载完成前就被销毁 —— 握手永远等不到，
+/// OSD 和挂件就再也不会弹出来了（实测：+2.2s 就拆了，FE_READY 一行都没有）。
+pub fn arm_main_at_boot() {
+    let delay = crate::system::config::load_config().idle_unload_secs;
+    if delay == 0 {
+        return;
+    }
+    // 先作废 setup 里因"启动即隐藏"而挂上的短计划
+    cancel_main();
+    std::thread::spawn(move || {
+        // 最多等 30 秒；握手完成后按用户阈值正常计时
+        for _ in 0..60 {
+            if crate::system::webview_orchestrator::WebviewOrchestrator::global().is_main_ready() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        }
+        arm_main_with_secs(delay);
+    });
+}
+
 /// OSD 浮层隐藏后安排一次延迟卸载
 pub fn arm_osd() {
     let Some(app) = app_handle() else { return };

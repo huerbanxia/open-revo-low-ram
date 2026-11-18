@@ -474,11 +474,12 @@ pub fn handle_window_event(window: &Window, event: &WindowEvent) {
                         // All validation passed: True external blur detected. Safely collapse window.
                         let _ = win.hide();
                         crate::system::telemetry::set_main_window_visible(false);
-                        // 失焦折叠是高频动作（点一下别处就收），用户往往几秒内又唤回来。
-                        // 这里用更宽的宽限期覆盖上一行的短延迟计划，避免每次唤回都吃冷启动。
-                        crate::system::idle_unload::arm_main_with_secs(
-                            crate::system::config::load_config().idle_unload_blur_secs,
-                        );
+                        // 失焦折叠默认跟随主动关闭的阈值（同一个"关掉即释放"节奏）。
+                        // 只有把 idle_unload_blur_secs 配成正数时，才给这条高频路径单独留宽限。
+                        let blur_secs = crate::system::config::load_config().idle_unload_blur_secs;
+                        if blur_secs > 0 {
+                            crate::system::idle_unload::arm_main_with_secs(blur_secs);
+                        }
                         crate::log_info!(
                             "WINDOW",
                             "Mini drawer automatically collapsed on blur (focus confirmed transferred outside)"

@@ -90,12 +90,12 @@ pub struct AppConfig {
     pub osd_scale: String,
     #[serde(default = "default_osd_position")]
     pub osd_position: String,
-    // 低内存空闲卸载：面板/浮层隐藏超过 N 秒后销毁对应 WebView，释放 Chromium 多进程常驻开销。
-    // 0 = 禁用（保持常驻热态，打开面板 0 延迟）。
+    // 低内存空闲卸载：面板隐藏超过 N 秒后销毁 WebView，释放 Chromium 多进程常驻开销。
+    // 默认 1（约 1 秒，等价"关掉即释放"）；0 = 禁用（恢复常驻热态，打开面板 0 延迟）。
     #[serde(default = "default_idle_unload_secs")]
     pub idle_unload_secs: u64,
-    // 失焦自动折叠（mini_auto_hide_on_blur）触发隐藏时的宽限期：这是高频动作，
-    // 用户往往几秒内就回来，宽限期给宽一点，避免每次唤回都吃 WebView 冷启动。
+    // 失焦自动折叠（mini_auto_hide_on_blur）的独立阈值。0 = 跟随 idle_unload_secs（默认即如此）；
+    // 只有想给这条高频路径留宽限期时才填正数（例如 240）。
     #[serde(default = "default_idle_unload_blur_secs")]
     pub idle_unload_blur_secs: u64,
     #[serde(default = "default_osd_idle_unload_secs")]
@@ -397,9 +397,9 @@ fn default_refresh_rate() -> u32 { 240 }
 fn default_osd_theme() -> String { "cinema".to_string() }
 fn default_osd_scale() -> String { "100%".to_string() }
 fn default_osd_position() -> String { "top-left".to_string() }
-// 主动关闭（×/托盘隐藏）后 5 秒释放 WebView；失焦自动折叠给 240 秒宽限；OSD 隐藏 120 秒后卸载
-fn default_idle_unload_secs() -> u64 { 5 }
-fn default_idle_unload_blur_secs() -> u64 { 240 }
+// 面板隐藏约 1 秒后释放 WebView（等价"关掉即释放"）；失焦折叠默认跟随该值；OSD 隐藏 120 秒后卸载
+fn default_idle_unload_secs() -> u64 { 1 }
+fn default_idle_unload_blur_secs() -> u64 { 0 }
 fn default_osd_idle_unload_secs() -> u64 { 120 }
 
 impl Default for AppConfig {

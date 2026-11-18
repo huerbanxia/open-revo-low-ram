@@ -375,8 +375,11 @@ pub fn run() {
                     crate::system::window::init_main_window(&window);
                     // 启动即隐藏（托盘常驻）时，正确登记一次"不可见"：既让遥测进入待机心跳，
                     // 也开启低内存空闲卸载倒计时（否则隐藏态会白挂一整套 Chromium 进程）。
+                    // 注意用 arm_main_at_boot：卸载必须等前端握手完成后再计时，否则前端还没
+                    // 挂载完 WebView 就被拆掉，OSD/挂件队列的解锁握手永远等不到。
                     if !window.is_visible().unwrap_or(false) {
                         crate::system::telemetry::set_main_window_visible(false);
+                        crate::system::idle_unload::arm_main_at_boot();
                     }
                 } else {
                     crate::log_error!("WINDOW", "CRITICAL: 'main' WebviewWindow was NOT created by Tauri during setup!");
