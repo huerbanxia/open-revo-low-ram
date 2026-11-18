@@ -188,6 +188,8 @@ pub fn mark_window_woken() {
 /// Restores the main window, dismisses the tray overflow flyout, and synchronizes mini/expanded layout.
 pub fn restore_and_sync_window(window: &WebviewWindow) {
     mark_window_woken();
+    // 取消"隐藏后卸载 WebView"的待执行计划：用户又要把面板调出来了
+    crate::system::idle_unload::cancel_main();
     #[cfg(windows)]
     {
         dismiss_windows_tray_overflow();
@@ -310,8 +312,39 @@ pub fn switch_to_mini_drawer(app: &tauri::AppHandle) {
 }
 
 /// Safely retrieves the main WebviewWindow instance if alive.
+/// 若实例已被"空闲卸载"销毁，则原地按需重建（配置同 tauri.conf.json 的 main 窗口），
+/// 保证托盘、热键、单实例唤醒等所有既有入口都能无感恢复面板。
 pub fn ensure_window_alive(app: &tauri::AppHandle) -> Option<WebviewWindow> {
-    app.get_webview_window("main")
+    if let Some(win) = app.get_webview_window("main") {
+        return Some(win);
+    }
+
+    crate::system::idle_unload::cancel_main();
+    crate::log_info!("WINDOW", "Main webview missing (idle-unloaded). Rebuilding on demand...");
+
+    let builder = tauri::WebviewWindowBuilder::new(
+        app,
+        "main",
+        tauri::WebviewUrl::App("index.html".into()),
+    )
+    .title("OpenRevo")
+    .inner_size(395.0, 622.0)
+    .resizable(false)
+    .decorations(false)
+    .transparent(true)
+    .shadow(true)
+    .visible(false);
+
+    match builder.build() {
+        Ok(win) => {
+            init_main_window(&win);
+            Some(win)
+        }
+        Err(e) => {
+            crate::log_error!("WINDOW", "Failed to rebuild 'main' webview on demand: {}", e);
+            None
+        }
+    }
 }
 
 /// Toggles between hiding and restoring the mini drawer window.

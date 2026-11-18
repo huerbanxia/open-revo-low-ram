@@ -1,4 +1,9 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+
+/// OSD 被"空闲卸载"后，第一次弹出要等异步重建（约 150~300ms）。
+/// 这个标记记录"重建完成后需要立刻呈现"，避免热键唤醒时只建不显。
+static OSD_PENDING_PRESENT: AtomicBool = AtomicBool::new(false);
 
 /// Update the OSD window screen position based on user configuration
 pub fn update_osd_position(app: &AppHandle, position_str: &str) {
@@ -47,9 +52,19 @@ pub fn update_osd_position(app: &AppHandle, position_str: &str) {
 /// Initialize the transparent, non-activating, click-through OSD window via orchestrator queue.
 pub fn init_osd_window(_app: &AppHandle) {
     let cfg = crate::system::config::load_config();
-    if cfg.osd_enabled {
-        crate::system::webview_orchestrator::WebviewOrchestrator::global().enqueue_osd();
+    if !cfg.osd_enabled {
+        return;
     }
+    // 低内存模式（osd_idle_unload_secs > 0）：开机不再预热 OSD，改为首次弹出时按需重建。
+    // 开机预热的代价是白白常驻一整个 renderer + 一份合成层；按需重建约 150~300ms。
+    if cfg.osd_idle_unload_secs > 0 {
+        crate::log_info!(
+            "OSD",
+            "Low-RAM mode: OSD prewarm skipped, window will be built on first use"
+        );
+        return;
+    }
+    crate::system::webview_orchestrator::WebviewOrchestrator::global().enqueue_osd();
 }
 
 /// Asynchronously build the OSD WebviewWindow without blocking main message pump.
@@ -118,6 +133,16 @@ pub async fn build_osd_window_async(app: &AppHandle) -> Result<String, String> {
                 }
             }
 
+            // 出厂是"常驻预热"：建好即隐藏。这里立刻挂上空闲卸载倒计时，
+            // 长时间不弹 OSD 就把这个 renderer 释放掉，下次弹出由 orchestrator 重建。
+            crate::system::idle_unload::arm_osd();
+
+            // 重建是异步的：如果这次重建正是被热键/事件唤醒触发的，建完必须立刻呈现。
+            if OSD_PENDING_PRESENT.swap(false, Ordering::SeqCst) {
+                present_osd_window(app);
+                crate::log_info!("OSD", "OSD rebuilt on demand and presented immediately (pending present satisfied)");
+            }
+
             Ok("osd".into())
         }
         Err(e) => {
@@ -129,6 +154,8 @@ pub async fn build_osd_window_async(app: &AppHandle) -> Result<String, String> {
 
 /// Presents the OSD window immediately in the topmost Z-order layer without stealing focus.
 pub fn present_osd_window(app: &AppHandle) {
+    // 取消待执行的 OSD 卸载计划（浮层又要出现了）
+    crate::system::idle_unload::cancel_osd();
     if let Some(win) = app.get_webview_window("osd") {
         #[cfg(windows)]
         unsafe {
@@ -152,6 +179,9 @@ pub fn present_osd_window(app: &AppHandle) {
         }
         let _ = win.set_ignore_cursor_events(true);
     } else {
+        // 浮层已被空闲卸载：登记"重建后要立刻显示"，再交给 orchestrator 异步重建。
+        // 不登记的话热键唤醒会出现"只建不显"（窗口建好了但没人 ShowWindow）。
+        OSD_PENDING_PRESENT.store(true, Ordering::SeqCst);
         crate::system::webview_orchestrator::WebviewOrchestrator::global().enqueue_osd();
     }
 }
@@ -167,6 +197,9 @@ pub fn dismiss_osd_window(app: &AppHandle) {
                 let _ = ShowWindow(HWND(hwnd.0 as _), SW_HIDE);
             }
         }
+        // 隐藏后安排延迟卸载：OSD 常驻预热要白占一整个 renderer 进程，
+        // 长时间不弹时销毁它，下次弹出由 orchestrator 即时重建。
+        crate::system::idle_unload::arm_osd();
     }
 }
 

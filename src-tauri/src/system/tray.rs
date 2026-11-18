@@ -6,7 +6,7 @@ use std::sync::{Arc, OnceLock};
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, TrayIcon, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter,
+    AppHandle, Emitter, Manager,
 };
 
 use crate::driver::ec_bridge::EcBridge;
@@ -98,7 +98,10 @@ pub fn build_tray_menu(
     app: &AppHandle,
     ec: &Arc<Mutex<EcBridge>>,
 ) -> Result<Menu<tauri::Wry>, tauri::Error> {
-    let is_expanded = crate::system::window::ensure_window_alive(app)
+    // 只读查询当前模式：故意不用 ensure_window_alive（那个会按需重建 webview，
+    // 菜单初始化阶段不该为了读一个宽高把整个 Chromium 拉起来）。
+    let is_expanded = app
+        .get_webview_window("main")
         .map(|w| crate::system::window::is_window_expanded(&w))
         .unwrap_or(false);
 

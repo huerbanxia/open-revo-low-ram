@@ -424,14 +424,23 @@ fn main() {
         println!("cargo:rustc-env=OPENREVO_APP_VERSION={}", env!("CARGO_PKG_VERSION"));
     }
 
+    // 清单权限级别：正式构建默认为 requireAdministrator（EC/WMI 读写需要），
+    // 允许用环境变量 OPENREVO_MANIFEST_LEVEL=asInvoker 产出无需提权的调试包，
+    // 用于在普通用户会话里做内存/UI 自动化实测（非提权环境下硬件功能会自行降级）。
+    let exec_level = match env::var("OPENREVO_MANIFEST_LEVEL").ok().as_deref() {
+        Some("asInvoker") | Some("asinvoker") => "asInvoker",
+        _ => "requireAdministrator",
+    };
+    println!("cargo:rerun-if-env-changed=OPENREVO_MANIFEST_LEVEL");
+
     let mut windows = tauri_build::WindowsAttributes::new();
     windows = windows.app_manifest(
-        r#"
+        &r#"
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges>
-        <requestedExecutionLevel level="requireAdministrator" uiAccess="false" />
+        <requestedExecutionLevel level="__EXEC_LEVEL__" uiAccess="false" />
       </requestedPrivileges>
     </security>
   </trustInfo>
@@ -454,7 +463,8 @@ fn main() {
     </application>
   </compatibility>
 </assembly>
-"#,
+"#
+        .replace("__EXEC_LEVEL__", exec_level),
     );
     println!("cargo:rerun-if-changed=icons/icon.ico");
     println!("cargo:rerun-if-changed=tauri.conf.json");

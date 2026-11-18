@@ -23,6 +23,7 @@ pub mod window;
 pub mod telemetry;
 pub mod widget_manager;
 pub mod webview_orchestrator;
+pub mod idle_unload;
 pub mod takeover;
 pub mod plugin_service;
 pub mod shortcuts;

@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::OnceLock;
 use std::time::Duration;
 use parking_lot::Mutex;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::driver::ec_bridge::SharedEcBridge;
 use crate::driver::gpu_bridge::SharedGpuBridge;
@@ -50,6 +50,13 @@ pub fn unregister_consumer(consumer_id: &str) {
 /// Report main console window visibility (foreground vs tray)
 pub fn set_main_window_visible(visible: bool) {
     let old = MAIN_WINDOW_VISIBLE.swap(visible, Ordering::SeqCst);
+    // 面板隐藏即开始倒计时卸载 WebView（低内存模式）；重新可见则作废卸载计划。
+    // 这里是所有隐藏路径（关闭按钮、托盘切换、失焦自动折叠、最小化）的唯一汇合点。
+    if visible {
+        crate::system::idle_unload::cancel_main();
+    } else {
+        crate::system::idle_unload::arm_main();
+    }
     if old != visible {
         crate::log_info!(
             "TELEMETRY",
@@ -158,8 +165,15 @@ pub fn start_telemetry_loop(
 }
 
 #[tauri::command]
-pub fn report_window_visibility(visible: bool) -> Result<(), String> {
-    set_main_window_visible(visible);
+pub fn report_window_visibility(app: tauri::AppHandle, visible: bool) -> Result<(), String> {
+    // 前端"我可见了"的声明不可信：托盘常驻场景下窗口是 visible:false 创建的，前端挂载完
+    // 仍会无条件上报 visible=true。这里以真实窗口状态为准，否则隐藏态永远被当作前台，
+    // 遥测不会进待机、低内存卸载也永远不触发。
+    let real_visible = app
+        .get_webview_window("main")
+        .map(|w| w.is_visible().unwrap_or(false))
+        .unwrap_or(false);
+    set_main_window_visible(visible && real_visible);
     Ok(())
 }
 

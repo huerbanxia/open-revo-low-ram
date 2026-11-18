@@ -131,7 +131,20 @@ export default function App() {
   const isBldPreview = urlParams?.get('preview') === 'bld';
 
   const [isExpanded, setIsExpanded] = useState(isBldPreview);
-  const [activeTab, setActiveTab] = useState<'overview' | 'gpu' | 'tuning' | 'lighting' | 'water' | 'system' | 'sponsor'>('overview');
+  // 低内存模式下主面板隐藏一段时间后 WebView 会被销毁重建，组件状态归零。
+  // 把当前标签页持久化，重建后用户仍回到原来那一页，而不是被打回概览。
+  const ACTIVE_TAB_KEY = 'openrevo_active_tab';
+  const VALID_TABS = ['overview', 'gpu', 'tuning', 'lighting', 'water', 'system', 'sponsor'] as const;
+  const [activeTab, setActiveTab] = useState<'overview' | 'gpu' | 'tuning' | 'lighting' | 'water' | 'system' | 'sponsor'>(() => {
+    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem(ACTIVE_TAB_KEY) : null;
+    return (saved && (VALID_TABS as readonly string[]).includes(saved) ? saved : 'overview') as
+      'overview' | 'gpu' | 'tuning' | 'lighting' | 'water' | 'system' | 'sponsor';
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(ACTIVE_TAB_KEY, activeTab);
+    } catch (_) {}
+  }, [activeTab]);
   const [openCustomTuning, setOpenCustomTuning] = useState(false);
   const [hardwareState, setHardwareState] = useState<HardwareState>(isBldPreview ? BLD_PREVIEW_STATE : DEFAULT_STATE);
   const [isTauriEnv, setIsTauriEnv] = useState(false);

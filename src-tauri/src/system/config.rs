@@ -90,6 +90,12 @@ pub struct AppConfig {
     pub osd_scale: String,
     #[serde(default = "default_osd_position")]
     pub osd_position: String,
+    // 低内存空闲卸载：面板/浮层隐藏超过 N 秒后销毁对应 WebView，释放 Chromium 多进程常驻开销。
+    // 0 = 禁用（保持常驻热态，打开面板 0 延迟）。
+    #[serde(default = "default_idle_unload_secs")]
+    pub idle_unload_secs: u64,
+    #[serde(default = "default_osd_idle_unload_secs")]
+    pub osd_idle_unload_secs: u64,
     #[serde(default)]
     pub fn_lock_enabled: bool,
     #[serde(default)]
@@ -387,6 +393,9 @@ fn default_refresh_rate() -> u32 { 240 }
 fn default_osd_theme() -> String { "cinema".to_string() }
 fn default_osd_scale() -> String { "100%".to_string() }
 fn default_osd_position() -> String { "top-left".to_string() }
+// 主面板隐藏 60s 后卸载 WebView；OSD 隐藏 120s 后卸载（首次弹出的冷启动延迟可接受）
+fn default_idle_unload_secs() -> u64 { 60 }
+fn default_osd_idle_unload_secs() -> u64 { 120 }
 
 impl Default for AppConfig {
     fn default() -> Self {
@@ -430,6 +439,8 @@ impl Default for AppConfig {
             osd_theme: default_osd_theme(),
             osd_scale: default_osd_scale(),
             osd_position: default_osd_position(),
+            idle_unload_secs: default_idle_unload_secs(),
+            osd_idle_unload_secs: default_osd_idle_unload_secs(),
             fn_lock_enabled: false,
             wifi_adapter_name: String::new(),
             takeover_oem: false,

@@ -367,11 +367,17 @@ pub fn run() {
             crate::system::boot_trace::boot_log("SETUP", "Tauri setup closure entered");
             crate::system::actuator::UnifiedPowerActuator::global().bind_app_handle(app.handle().clone());
             crate::system::webview_orchestrator::WebviewOrchestrator::global().bind_app_handle(app.handle().clone());
+            crate::system::idle_unload::bind_app(app.handle());
 
             // Step 6.1: Initialize main WebviewWindow (positioning above taskbar)
             crate::system::boot_trace::boot_scope("Step 6.1: Main Window Positioning", || {
                 if let Some(window) = app.get_webview_window("main") {
                     crate::system::window::init_main_window(&window);
+                    // 启动即隐藏（托盘常驻）时，正确登记一次"不可见"：既让遥测进入待机心跳，
+                    // 也开启低内存空闲卸载倒计时（否则隐藏态会白挂一整套 Chromium 进程）。
+                    if !window.is_visible().unwrap_or(false) {
+                        crate::system::telemetry::set_main_window_visible(false);
+                    }
                 } else {
                     crate::log_error!("WINDOW", "CRITICAL: 'main' WebviewWindow was NOT created by Tauri during setup!");
                 }
@@ -458,6 +464,14 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building OpenRevo application")
         .run(|_app_handle, event| {
+            // 低内存模式下主面板/OSD 的 WebView 会被主动销毁；窗口数归零时 Tauri 默认会
+            // 结束事件循环，那等于把托盘常驻的"无界面后台"一起干掉。这里只拦截"窗口关完了"
+            // 这一种退出请求（code 为 None），显式 app.exit(code) 仍然放行。
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = &event {
+                if code.is_none() {
+                    api.prevent_exit();
+                }
+            }
             if let tauri::RunEvent::Exit = event {
                 println!("[OpenRevo] Process exiting. Executing clean webview shutdown and hardware safety shutdown...");
                 crate::system::webview_orchestrator::WebviewOrchestrator::global().safe_shutdown_all_subviews();
