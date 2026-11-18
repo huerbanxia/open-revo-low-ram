@@ -94,6 +94,10 @@ pub struct AppConfig {
     // 0 = 禁用（保持常驻热态，打开面板 0 延迟）。
     #[serde(default = "default_idle_unload_secs")]
     pub idle_unload_secs: u64,
+    // 失焦自动折叠（mini_auto_hide_on_blur）触发隐藏时的宽限期：这是高频动作，
+    // 用户往往几秒内就回来，宽限期给宽一点，避免每次唤回都吃 WebView 冷启动。
+    #[serde(default = "default_idle_unload_blur_secs")]
+    pub idle_unload_blur_secs: u64,
     #[serde(default = "default_osd_idle_unload_secs")]
     pub osd_idle_unload_secs: u64,
     #[serde(default)]
@@ -393,8 +397,9 @@ fn default_refresh_rate() -> u32 { 240 }
 fn default_osd_theme() -> String { "cinema".to_string() }
 fn default_osd_scale() -> String { "100%".to_string() }
 fn default_osd_position() -> String { "top-left".to_string() }
-// 主面板隐藏 60s 后卸载 WebView；OSD 隐藏 120s 后卸载（首次弹出的冷启动延迟可接受）
-fn default_idle_unload_secs() -> u64 { 60 }
+// 主动关闭（×/托盘隐藏）后 5 秒释放 WebView；失焦自动折叠给 240 秒宽限；OSD 隐藏 120 秒后卸载
+fn default_idle_unload_secs() -> u64 { 5 }
+fn default_idle_unload_blur_secs() -> u64 { 240 }
 fn default_osd_idle_unload_secs() -> u64 { 120 }
 
 impl Default for AppConfig {
@@ -440,6 +445,7 @@ impl Default for AppConfig {
             osd_scale: default_osd_scale(),
             osd_position: default_osd_position(),
             idle_unload_secs: default_idle_unload_secs(),
+            idle_unload_blur_secs: default_idle_unload_blur_secs(),
             osd_idle_unload_secs: default_osd_idle_unload_secs(),
             fn_lock_enabled: false,
             wifi_adapter_name: String::new(),

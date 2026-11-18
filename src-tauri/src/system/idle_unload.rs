@@ -41,8 +41,13 @@ fn app_handle() -> Option<AppHandle> {
 
 /// 主面板隐藏后安排一次延迟卸载；delay=0 时直接返回（保持常驻）
 pub fn arm_main() {
-    let Some(app) = app_handle() else { return };
     let delay = crate::system::config::load_config().idle_unload_secs;
+    arm_main_with_secs(delay);
+}
+
+/// 指定延迟（秒）安排主面板卸载。失焦自动折叠这类高频隐藏走更宽的宽限期。
+pub fn arm_main_with_secs(delay: u64) {
+    let Some(app) = app_handle() else { return };
     if delay == 0 {
         return;
     }

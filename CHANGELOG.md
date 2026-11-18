@@ -8,10 +8,13 @@
 ## [Unreleased] - 待发布
 
 ### ✨ 新增 (Added)
-- 新增 `config.json` 两个开关：`idle_unload_secs`（主面板隐藏后多少秒卸载 WebView，默认 60，0=关闭）与 `osd_idle_unload_secs`（OSD 浮层隐藏后多少秒卸载，默认 120，0=关闭并恢复开机预热）。详见 `docs/LOW_RAM_MODE.md`。
+- 新增 `config.json` 三个开关：`idle_unload_secs`（主动关闭面板后多少秒卸载 WebView，默认 **5**，0=关闭）、
+  `idle_unload_blur_secs`（失焦自动折叠后的宽限期，默认 **240**，0=该路径不卸载）、
+  `osd_idle_unload_secs`（OSD 浮层隐藏后多少秒卸载，默认 120，0=关闭并恢复开机预热）。详见 `docs/LOW_RAM_MODE.md`。
 
 ### ⚡ 优化 (Changed)
 - **低内存空闲卸载**：面板/OSD 隐藏超过阈值后直接销毁对应 WebviewWindow（不再是 hide），让 WebView2 的 browser / renderer / GPU / network 进程整套退出。实测隐藏态由 **335MB / 8 进程降至 18MB / 1 进程**（仅剩 Rust 主进程），托盘、全局热键、EC/WMI 监听、遥测心跳全部保留；再次打开面板按需重建（冷启动约 300~800ms）。
+- 两条隐藏路径分开计时：主动关闭（×／托盘隐藏）5 秒即释放；失焦自动折叠是高频动作，给 240 秒宽限，避免"点别处收起再点回来"每次都吃冷启动。
 - OSD 浮层不再开机预热：默认改为首次弹出时按需重建，启动常驻内存再降约 60MB（原 335MB → 275MB）。
 - 主面板标签页选择持久化到 localStorage，WebView 重建后仍回到原来那一页。
 
